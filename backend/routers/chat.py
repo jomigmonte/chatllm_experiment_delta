@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import OPENROUTER_MODEL_DEFAULT
 from backend.database import get_db
-from backend.models import ChatMessage
+from backend.models import ChatMessage, Session as SessionModel
 from backend.schemas.chat import ChatRequest, ChatResponse
 from backend.services.openrouter import OpenRouterConfigError, generate_reply, stream_reply
 
@@ -36,9 +36,23 @@ async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
 
     resolved_model = payload.model or model_name or OPENROUTER_MODEL_DEFAULT
 
-    # Persistimos apenas o fluxo basico de mensagens; sessoes e titulos sao tarefa do participante.
-    db.add(ChatMessage(session_key="default", role="user", content=payload.message, model=resolved_model))
-    db.add(ChatMessage(session_key="default", role="assistant", content=reply, model=resolved_model))
+    # Determine session
+    session_id = payload.session_id or 0
+
+    db.add(ChatMessage(session_id=session_id, session_key="default", role="user", content=payload.message, model=resolved_model))
+    db.add(ChatMessage(session_id=session_id, session_key="default", role="assistant", content=reply, model=resolved_model))
+
+    # Auto-title if session exists and has no title yet
+    if session_id:
+        session_obj = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        if session_obj and not session_obj.title:
+            try:
+                from backend.services.titler import generate_title
+                title = await generate_title(payload.message)
+                session_obj.title = title
+            except Exception:
+                pass  # Non-blocking; title stays None
+
     db.commit()
 
     return ChatResponse(reply=reply, model=resolved_model)
@@ -47,6 +61,7 @@ async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
 @router.post("/api/chat/stream")
 async def chat_stream(payload: ChatRequest, db: Session = Depends(get_db)) -> StreamingResponse:
     resolved_model = payload.model or OPENROUTER_MODEL_DEFAULT
+    session_id = payload.session_id or 0
 
     async def event_generator():
         full_reply = ""
@@ -68,6 +83,7 @@ async def chat_stream(payload: ChatRequest, db: Session = Depends(get_db)) -> St
         if full_reply.strip():
             db.add(
                 ChatMessage(
+                    session_id=session_id,
                     session_key="default",
                     role="user",
                     content=payload.message,
@@ -76,12 +92,25 @@ async def chat_stream(payload: ChatRequest, db: Session = Depends(get_db)) -> St
             )
             db.add(
                 ChatMessage(
+                    session_id=session_id,
                     session_key="default",
                     role="assistant",
                     content=full_reply,
                     model=resolved_model,
                 )
             )
+
+            # Auto-title if session exists and has no title yet
+            if session_id:
+                session_obj = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+                if session_obj and not session_obj.title:
+                    try:
+                        from backend.services.titler import generate_title
+                        title = await generate_title(payload.message)
+                        session_obj.title = title
+                    except Exception:
+                        pass
+
             db.commit()
 
         yield f"data: {json.dumps({'done': True}, ensure_ascii=True)}\n\n"
