@@ -1,7 +1,8 @@
 const { useEffect, useRef } = React;
 
 // Lines that contain bare (undelimited) LaTeX math commands
-const MATH_CMD_RE = /\\(?:frac|sqrt|sum|int|prod|lim|times|cdot|div|mathbf|mathit|mathrm|boldsymbol|left|right|begin|end|partial|nabla|over|underbrace|overbrace|hat|bar|vec|pm|mp|leq|geq|neq|approx|equiv|infty)\b/;
+const MATH_CMD_RE =
+  /\\(?:frac|sqrt|sum|int|prod|lim|times|cdot|div|mathbf|mathit|mathrm|boldsymbol|left|right|begin|end|partial|nabla|over|underbrace|overbrace|hat|bar|vec|pm|mp|leq|geq|neq|approx|equiv|infty)\b/;
 
 // Single-dollar math: $...$ where the content does NOT start with a digit (currency)
 // Matches e.g. $n > 92$, $O(n)$, $\alpha$  — but NOT $3.00 or $100
@@ -17,30 +18,44 @@ function preprocessMarkdown(text) {
   // 2. Line-by-line: wrap bare LaTeX lines in $$...$$ and escape remaining currency
   const lines = text.split("\n");
   let inFence = false;
-  return lines.map((line) => {
-    if (/^```/.test(line)) { inFence = !inFence; return line; }
-    if (inFence) return line;
+  return lines
+    .map((line) => {
+      if (/^```/.test(line)) {
+        inFence = !inFence;
+        return line;
+      }
+      if (inFence) return line;
 
-    const trimmed = line.trim();
+      const trimmed = line.trim();
 
-    // Already has explicit math delimiters — leave untouched
-    if (/^\$\$/.test(trimmed) || /^\\\[/.test(trimmed) || /^\\\(/.test(trimmed)) return line;
+      // Already has explicit math delimiters — leave untouched
+      if (
+        /^\$\$/.test(trimmed) ||
+        /^\\\[/.test(trimmed) ||
+        /^\\\(/.test(trimmed)
+      )
+        return line;
 
-    // Bare LaTeX commands with no existing delimiters → wrap in $$...$$
-    if (MATH_CMD_RE.test(trimmed) && !/\\\(|\\\[/.test(trimmed)) {
-      const inner = trimmed.replace(CURRENCY_RE, "\\$$1");
-      return `$$${inner}$$`;
-    }
+      // Bare LaTeX commands with no existing delimiters → wrap in $$...$$
+      if (MATH_CMD_RE.test(trimmed) && !/\\\(|\\\[/.test(trimmed)) {
+        const inner = trimmed.replace(CURRENCY_RE, "\\$$1");
+        return `$$${inner}$$`;
+      }
 
-    // Normal text: convert remaining $<digit> to HTML entity so KaTeX ignores it
-    return line.replace(CURRENCY_RE, "&#36;$1");
-  }).join("\n");
+      // Normal text: convert remaining $<digit> to HTML entity so KaTeX ignores it
+      return line.replace(CURRENCY_RE, "&#36;$1");
+    })
+    .join("\n");
 }
 
 function renderMarkdownAndLatex(rawText) {
   if (!window.marked || !window.DOMPurify) {
     const src = String(rawText || "");
-    return src.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>");
+    return src
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br/>");
   }
 
   // Preprocess: normalize $...$ and wrap bare LaTeX lines
@@ -48,7 +63,11 @@ function renderMarkdownAndLatex(rawText) {
 
   // Protect math blocks from marked.js backslash mangling (e.g. \( → ( in table cells)
   const saved = [];
-  const save = (m) => { const i = saved.length; saved.push(m); return `\x02M${i}\x03`; };
+  const save = (m) => {
+    const i = saved.length;
+    saved.push(m);
+    return `\x02M${i}\x03`;
+  };
   source = source
     .replace(/\$\$[\s\S]+?\$\$/g, save)
     .replace(/\\\[[\s\S]+?\\\]/g, save)
@@ -70,16 +89,28 @@ function normalizeLanguageAlias(rawLanguage) {
     .replace(/^language-/, "");
 
   const aliases = {
-    "c++": "cpp", cpp: "cpp", cxx: "cpp", cc: "cpp",
+    "c++": "cpp",
+    cpp: "cpp",
+    cxx: "cpp",
+    cc: "cpp",
     c: "c",
-    "c#": "csharp", cs: "csharp",
-    java: "java", lua: "lua",
-    asm: "x86asm", assembly: "x86asm", s: "x86asm",
-    tex: "latex", latex: "latex",
-    plain: "plaintext", text: "plaintext",
-    shell: "bash", sh: "bash",
+    "c#": "csharp",
+    cs: "csharp",
+    java: "java",
+    lua: "lua",
+    asm: "x86asm",
+    assembly: "x86asm",
+    s: "x86asm",
+    tex: "latex",
+    latex: "latex",
+    plain: "plaintext",
+    text: "plaintext",
+    shell: "bash",
+    sh: "bash",
     yml: "yaml",
-    js: "javascript", ts: "typescript", py: "python",
+    js: "javascript",
+    ts: "typescript",
+    py: "python",
   };
 
   return aliases[language] || language;
@@ -114,10 +145,12 @@ function enhanceCodeBlocks(node) {
         try {
           await navigator.clipboard.writeText(code.innerText);
           copyButton.textContent = "Copiado";
-        } catch {
+        } catch (e) {
           copyButton.textContent = "Erro";
         }
-        setTimeout(() => { copyButton.textContent = "Copiar"; }, 1000);
+        setTimeout(() => {
+          copyButton.textContent = "Copiar";
+        }, 1000);
       });
       wrapper.appendChild(copyButton);
     }
@@ -141,7 +174,15 @@ function MessageContent({ content }) {
           { left: "\\(", right: "\\)", display: false },
           { left: "\\[", right: "\\]", display: true },
         ],
-        ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code", "option"],
+        ignoredTags: [
+          "script",
+          "noscript",
+          "style",
+          "textarea",
+          "pre",
+          "code",
+          "option",
+        ],
       });
     }
 
@@ -149,7 +190,9 @@ function MessageContent({ content }) {
       node.querySelectorAll("pre code").forEach((block) => {
         const lang = getLanguageFromCodeBlock(block);
         if (lang && window.hljs.getLanguage(lang)) {
-          block.innerHTML = window.hljs.highlight(block.textContent || "", { language: lang }).value;
+          block.innerHTML = window.hljs.highlight(block.textContent || "", {
+            language: lang,
+          }).value;
           block.className = `hljs language-${lang}`;
         } else {
           window.hljs.highlightElement(block);

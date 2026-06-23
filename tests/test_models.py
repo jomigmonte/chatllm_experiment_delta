@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from backend.models import ChatMessage
+import pytest
+from backend.models import ChatMessage, Session, User
 
 
 class TestChatMessage:
@@ -108,3 +109,92 @@ class TestChatMessage:
         db_session.refresh(msg)
 
         assert msg.content == long_text
+
+
+class TestUser:
+    def test_create_user_defaults(self, db_session):
+        """Deve criar um usuario com valores padrao."""
+        user = User(email="test@test.com", hashed_password="hash123")
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+
+        assert user.id is not None
+        assert user.email == "test@test.com"
+        assert user.hashed_password == "hash123"
+        assert isinstance(user.created_at, datetime)
+
+    def test_user_email_unique(self, db_session):
+        """Email deve ser unico (unique constraint)."""
+        from sqlalchemy.exc import IntegrityError
+
+        user1 = User(email="dup@test.com", hashed_password="hash1")
+        db_session.add(user1)
+        db_session.commit()
+
+        user2 = User(email="dup@test.com", hashed_password="hash2")
+        db_session.add(user2)
+        with pytest.raises(IntegrityError):
+            db_session.commit()
+        db_session.rollback()
+
+    def test_user_query_by_email(self, db_session):
+        """Deve filtrar usuario por email."""
+        user = User(email="find@test.com", hashed_password="hash")
+        db_session.add(user)
+        db_session.commit()
+
+        found = db_session.query(User).filter(User.email == "find@test.com").first()
+        assert found is not None
+        assert found.hashed_password == "hash"
+
+
+class TestSession:
+    def test_create_session_defaults(self, db_session):
+        """Deve criar uma sessao com valores padrao."""
+        s = Session()
+        db_session.add(s)
+        db_session.commit()
+        db_session.refresh(s)
+
+        assert s.id is not None
+        assert s.user_id == 0
+        assert s.title is None
+        assert isinstance(s.created_at, datetime)
+        assert isinstance(s.updated_at, datetime)
+
+    def test_create_session_with_user_id(self, db_session):
+        """Deve criar sessao com user_id especifico."""
+        s = Session(user_id=42, title="Minha Sessao")
+        db_session.add(s)
+        db_session.commit()
+        db_session.refresh(s)
+
+        assert s.user_id == 42
+        assert s.title == "Minha Sessao"
+
+    def test_session_filter_by_user(self, db_session):
+        """Deve filtrar sessoes por user_id."""
+        s1 = Session(user_id=1)
+        s2 = Session(user_id=2)
+        s3 = Session(user_id=1)
+        db_session.add_all([s1, s2, s3])
+        db_session.commit()
+
+        results = db_session.query(Session).filter(Session.user_id == 1).all()
+        assert len(results) == 2
+
+    def test_session_updated_at_changes(self, db_session):
+        """updated_at deve ser atualizado ao modificar."""
+        from datetime import timedelta
+
+        s = Session(title="Original")
+        db_session.add(s)
+        db_session.commit()
+        original_updated = s.updated_at
+
+        s.title = "Modificado"
+        db_session.commit()
+        db_session.refresh(s)
+
+        assert s.updated_at >= original_updated

@@ -5,25 +5,23 @@
 **Hard rule**: AI agents must not edit this file and must not draft paste-ready content for it.
 
 ## R — Repeat (The Problem)
-_State the problem in your own words. Confirm that you share the same mental model of the goal._
+Fazer sistema de login e senha para usuários e armazenar as informações de cada sessão que o usuário criou em sua conta.
 
 ## E — Examples
-_Provide concrete inputs and expected outputs that demonstrate the correctness. Base them on observable behavior._
-
-- **Happy Path Input**: ...
-  **Output**: ...
-
-- **Edge Case Input**: ...
-  **Output**: ...
+Usuário A cria sessão chamada "Teste" e quando ele loga na aplicação novamente a sessão "Teste" é recuperada. Porém quando o usuário B loga, ele não pode ver a sessão "Teste"
 
 ## A — Approach
-_Describe your high-level strategy conceptually. How did you design the solution?_
+Foi criado no banco o usuário que guarda várias sessões além de ter uma senha para acessar, no frontend foi feito a página de login que pede email e senha além de permitir a criação de uma nova conta.
 
 ## C — Code
-_Identify the most critical code changes, format as actual files, functions, or methods. Justify the intent of your design choices rather than just acknowledging the syntax changes._
+models.py - criado o modelo de User, que guarda seu email e senha e em Session foi adicionado o user id para identificar qual usuário criou a sessão
+
+api.js - métodos para registrar um novo usuário além de fazer o login
+
+sessions.py - modificados métodos para recuperar sessões para recuperar de acordo com o user id
 
 ## T — Tests
-_Explain how the solution was validated, pointing to the actual test files, functions, or methods. Document any manual or automated tests._
+Foram feitos testes automatizados além de testes manuais abrindo a aplicação e conferindo todo o processo de criação e acesso de conta além de criação de sessões em contas diferentes.
 
 ## O — Optimize
-_Address Big(O) complexity, note that sometimes it doesn't apply, trade-offs, constraints, and opportunities for future improvement._
+No futuro poderia ser adicionado a opção de login com conta do Google.

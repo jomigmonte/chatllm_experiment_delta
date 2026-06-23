@@ -4,7 +4,110 @@ function createMessageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/* ── Login Screen Component ─────────────────────────────────── */
+function LoginScreen({ onAuthSuccess, error: externalError }) {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      let result;
+      if (mode === "login") {
+        result = await loginUser(email, password);
+      } else {
+        result = await registerUser(email, password);
+      }
+      setToken(result.token);
+      onAuthSuccess(result);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-screen">
+      <div className="login-card">
+        <h1 className="login-title">ChatLLM Lab</h1>
+        <p className="login-subtitle">
+          {mode === "login" ? "Entre com sua conta" : "Crie sua conta"}
+        </p>
+        {(error || externalError) && (
+          <div className="note error">{error || externalError}</div>
+        )}
+        <form onSubmit={handleSubmit} className="login-form">
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoFocus
+            className="login-input"
+          />
+          <input
+            type="password"
+            placeholder="Senha"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={6}
+            className="login-input"
+          />
+          <button type="submit" className="login-btn" disabled={loading}>
+            {loading
+              ? "Aguarde..."
+              : mode === "login"
+                ? "Entrar"
+                : "Criar conta"}
+          </button>
+        </form>
+        <p className="login-toggle">
+          {mode === "login" ? (
+            <>
+              Nao tem conta?{" "}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setMode("register");
+                  setError("");
+                }}
+              >
+                Cadastre-se
+              </a>
+            </>
+          ) : (
+            <>
+              Ja tem conta?{" "}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setMode("login");
+                  setError("");
+                }}
+              >
+                Fazer login
+              </a>
+            </>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ── Main App ───────────────────────────────────────────────── */
 function App() {
+  const [user, setUser] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -22,9 +125,17 @@ function App() {
     content: "Bem-vindo ao ChatLLM Lab. Como posso ajudar voce hoje?",
   };
 
-  // Load sessions on mount and create first if none exist
+  // Check for existing token on mount
   useEffect(() => {
-    if (initialLoadDone.current) return;
+    const token = getToken();
+    if (token) {
+      setUser({ token });
+    }
+  }, []);
+
+  // Load sessions when user is set
+  useEffect(() => {
+    if (!user || initialLoadDone.current) return;
     initialLoadDone.current = true;
 
     (async () => {
@@ -35,10 +146,8 @@ function App() {
           allSessions = [newSession];
         }
         setSessions(allSessions);
-        // Select the first session
         const target = allSessions[0];
         setCurrentSessionId(target.id);
-        // Load messages for that session
         const msgsData = await getSessionMessages(target.id);
         const loaded = msgsData.messages.map((m) => ({
           id: createMessageId(),
@@ -48,10 +157,15 @@ function App() {
         setMessages(loaded.length > 0 ? loaded : [WELCOME_MESSAGE]);
       } catch (err) {
         console.error("Failed to load sessions:", err);
+        if (err.message?.includes("401") || err.message?.includes("422")) {
+          setToken(null);
+          setUser(null);
+          initialLoadDone.current = false;
+        }
         setMessages([WELCOME_MESSAGE]);
       }
     })();
-  }, []);
+  }, [user]);
 
   const chatHistory = useMemo(
     () =>
@@ -74,7 +188,7 @@ function App() {
     try {
       const all = await listSessions();
       setSessions(all);
-    } catch {
+    } catch (e) {
       // ignore
     }
   }, []);
@@ -92,7 +206,7 @@ function App() {
           content: m.content,
         }));
         setMessages(loaded.length > 0 ? loaded : [WELCOME_MESSAGE]);
-      } catch {
+      } catch (e) {
         setMessages([WELCOME_MESSAGE]);
       }
     },
@@ -107,7 +221,7 @@ function App() {
       setCurrentSessionId(newSession.id);
       setMessages([WELCOME_MESSAGE]);
       setError("");
-    } catch (err) {
+    } catch (e) {
       setError("Erro ao criar nova sessao.");
     }
   }, [busy]);
@@ -128,12 +242,22 @@ function App() {
           setCurrentSessionId(target.id);
           switchSession(target.id);
         }
-      } catch {
+      } catch (e) {
         setError("Erro ao excluir sessao.");
       }
     },
     [sessions, currentSessionId, switchSession],
   );
+
+  const handleLogout = useCallback(() => {
+    setToken(null);
+    setUser(null);
+    setSessions([]);
+    setCurrentSessionId(null);
+    setMessages([]);
+    setError("");
+    initialLoadDone.current = false;
+  }, []);
 
   const onStop = () => {
     abortControllerRef.current?.abort();
@@ -145,7 +269,6 @@ function App() {
     event.preventDefault();
     const cleaned = text.trim();
     if (!cleaned || busy) return;
-
     setError("");
     const userMessage = {
       id: createMessageId(),
@@ -232,6 +355,23 @@ function App() {
     ? sessions.find((s) => s.id === currentSessionId)?.title || "Nova conversa"
     : "ChatLLM Lab";
 
+  // If not logged in, show login screen
+  if (!user) {
+    return (
+      <LoginScreen
+        onAuthSuccess={(result) => {
+          setUser({
+            token: result.token,
+            email: result.email,
+            userId: result.user_id,
+          });
+          initialLoadDone.current = false;
+        }}
+        error={error}
+      />
+    );
+  }
+
   return (
     <div className="app-layout">
       {/* Sidebar */}
@@ -316,6 +456,23 @@ function App() {
             </svg>
           </button>
           <div className="brand">{currentTitle}</div>
+          <div className="header-spacer" />
+          <button className="logout-btn" onClick={handleLogout} title="Sair">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <path d="M6 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" />
+              <polyline points="10,12 14,8 10,4" />
+              <line x1="14" y1="8" x2="6" y2="8" />
+            </svg>
+            Sair
+          </button>
         </header>
 
         <section className="messages" aria-live="polite" ref={messagesRef}>
